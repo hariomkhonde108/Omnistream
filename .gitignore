@@ -1,0 +1,18 @@
+# Node/React
+node_modules/
+dist/
+build/
+.npm/
+
+# Go binaries
+/backend/bin/
+*.exe
+*.out
+
+# Secrets and Environment
+.env
+.env.local
+
+# OS Files
+.DS_Store
+Thumbs.db

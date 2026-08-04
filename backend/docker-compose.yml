@@ -1,0 +1,188 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnistream-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omnistream
+      POSTGRES_PASSWORD: omnistream_dev_password
+      POSTGRES_DB: omnistream
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - omnistream-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnistream"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: omnistream-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: omnistream
+      MINIO_ROOT_PASSWORD: omnistream_dev_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - omnistream-net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: omnistream-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - omnistream-net
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 omnistream omnistream_dev_password;
+      mc mb --ignore-existing local/omnistream-files;
+      mc mb --ignore-existing local/omnistream-recordings;
+      exit 0;
+      "
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: omnistream-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: HOST://:9092,DOCKER://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9092,DOCKER://kafka:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,HOST:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - omnistream-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: omnistream-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - omnistream-net
+  kafka-init:
+    image: apache/kafka:3.7.0
+    container_name: omnistream-kafka-init
+    depends_on:
+      - kafka
+    networks:
+      - omnistream-net
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for Kafka to be ready...';
+      sleep 10;
+      /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic file-events --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic file-ready-events --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic recording.events --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1;
+      echo 'Kafka topics pre-created successfully!';
+      exit 0;
+      "
+
+  redis:
+    image: redis:7-alpine
+    container_name: omnistream-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - omnistream-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: omnistream-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    network_mode: "host"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: omnistream-whisper
+    restart: unless-stopped
+    environment:
+      ASR_MODEL: base
+      ASR_ENGINE: faster_whisper
+    ports:
+      - "9091:9000"
+    volumes:
+      - whisper_cache:/root/.cache
+    networks:
+      - omnistream-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: omnistream-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - omnistream-net
+
+  livekit-egress:
+    image: livekit/egress:latest
+    container_name: omnistream-egress
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml
+    depends_on:
+      livekit:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    shm_size: "1gb"
+
+networks:
+  omnistream-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  kafka_data:
+  whisper_cache:
+  ollama_data:

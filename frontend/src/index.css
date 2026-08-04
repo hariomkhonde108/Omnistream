@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .glass-surface {
+    @apply bg-white/70 shadow-[0_20px_70px_-30px_rgba(15,23,42,0.25)] backdrop-blur-sm;
+  }
+}
+
+/* When LiveKit's fullscreen button is clicked, the browser makes some
+   element the "fullscreen element." By default the browser tries to
+   stretch it to fill the screen — but our own fixed height (h-[600px] on
+   the video panel, for its normal docked-in-the-page size) has higher CSS
+   specificity than the browser's built-in fullscreen sizing, so the
+   element technically goes fullscreen while still being locked at 600px
+   tall. This override forces full-viewport sizing specifically while an
+   element is in the browser's fullscreen state, regardless of whatever
+   size it's given normally. */
+:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+}

@@ -1,0 +1,5 @@
+redis:
+  address: 127.0.0.1:6379
+api_key: devkey
+api_secret: devsecret_change_me_in_production
+ws_url: ws://127.0.0.1:7880
