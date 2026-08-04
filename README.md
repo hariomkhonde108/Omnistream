@@ -6,7 +6,7 @@ Built with Go, Kafka, PostgreSQL, and MinIO, OmniStream is designed to handle hi
 
 ##  System Architecture
 
-![OmniStream Architecture Diagram](./path-to-your-architecture-diagram.png)  
+![OmniStream Architecture Diagram](https://github.com/hariomkhonde108/Omnistream/blob/main/omniStream_architecture.png)  
 *(Add your Eraser.io architecture diagram here)*
 
 ##  Key Features
